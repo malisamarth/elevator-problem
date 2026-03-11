@@ -1,1 +1,21 @@
+Requirements:
 
+- Create a system with 3 elevators (lifts)
+
+- Create a minimum of 4 floors (for example: Ground, 1, 2, 3)
+
+- Provide floor call buttons for each floor
+
+- When a floor is requested, one of the elevators should respond
+
+- The nearest available elevator should respond to the request
+
+- Elevators should behave logically based on direction and request queue
+
+- Elevators should not all respond to the same request unnecessarily
+
+- Each elevator should maintain its own movement and request queue
+
+- Elevator must move smoothly between floors (no instant teleport)
+
+- Display current floor for each elevator
