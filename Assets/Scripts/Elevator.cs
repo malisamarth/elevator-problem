@@ -1,7 +1,6 @@
-using NUnit.Framework;
+using System;
 using System.Collections;
 using System.Collections.Generic;
-using UnityEditor.PackageManager.Requests;
 using UnityEngine;
 
 public class Elevator : MonoBehaviour {
@@ -14,232 +13,206 @@ public class Elevator : MonoBehaviour {
 
     List<Floors> movementQueue = new List<Floors>();
 
+    private event EventHandler<RequestDataEventHandler> OnRequestLoaded;
+    public class RequestDataEventHandler : EventArgs {
+        public Floors floorRequest;
+
+        public RequestDataEventHandler(Floors floorRequest) {
+            this.floorRequest = floorRequest;
+        }
+
+    }
+
+    private Floors currentActiveFloor;
+    private Floors lastElevatorFloor;
+
     private Vector3 currentTargetFloorPosition;
 
     private ElevatorState currentElevatorState;
 
-    private Floors currentElevatorFloor = Floors.GroundFloor;
-    private Floors newTargetFloor = Floors.None;
-    private Floors lastTargetFloor;
-
     private bool isWaitingAtFloor = false;
+    private bool startMotion = false;
+
+    private ElevatorDirectionLock activeElevatorDirectionLock;
 
     [SerializeField] private List<Floors> testingArray;
 
-    private bool startMotion = false;
 
     private void Start() {
-
-        SetInActiveRestFloor();
-        SetCurrentElevatorFloor(Floors.GroundFloor);
-        ChangeCurrentElevatorState(ElevatorState.Idle);
-        SetLastTargetFloor(currentElevatorFloor);
-
-
-        ExecuteMovementQueue();
+        DefaultMode();
+        OnRequestLoaded += SortRequestQueue;
     }
 
 
     private void Update() {
-        if (currentElevatorState == ElevatorState.Idle || isWaitingAtFloor) {
 
-            return;
+        if (movementQueue.Count > 0 && !isWaitingAtFloor) {
+            Floors nextFloor = movementQueue[0];
+
+            Vector3 nextPosition = GetPositionByFloor(nextFloor);
+
+            if (currentTargetFloorPosition != nextPosition) {
+                SetCurrentFloorTarget(nextFloor);
+            }
         }
 
-        SetElevatorFloorPosition();
+        UpdateElevatorMovement();
+        SetElevatorStatus();
 
-        if (HasElevatorReachedTargetFloor(newTargetFloor) && !isWaitingAtFloor) {
-            StartCoroutine(WaitForTime(2f));
-        }
+        //Debug.Log(gameObject.name + " = " + currentElevatorState);
     }
-
-    IEnumerator WaitForTime(float time) {
-        isWaitingAtFloor = true;
-
-        yield return new WaitForSeconds(time);
-
-        isWaitingAtFloor = false;
-        RemoveRequest();
-        OnElevatorReachedFloor();
-    }
-
-    //Data from Manager
 
     public void LoadNewRequestFromSystem(Floors targetFloor) {
-        InsertNewRequestIntoQueue(targetFloor);
 
+        OnRequestLoaded?.Invoke(this, new RequestDataEventHandler(targetFloor));
 
+        Debug.Log(targetFloor + " :- New floor request - " + gameObject.name);
+    }
 
-        if (currentElevatorState == ElevatorState.Idle && movementQueue.Count > 0 && startMotion) {
-            ExecuteMovementQueue();
+    private void SortRequestQueue(object sender, RequestDataEventHandler e) {
+
+        Debug.Log(e.floorRequest + " :- new request for + " + gameObject.name);
+
+        SortQueue(e.floorRequest);
+
+    }
+
+    private void SortQueue(Floors requestedFloor) {
+        int requestedFloorIndex = (int)requestedFloor;
+
+        for (int currentMovementQueueIndex = 0; currentMovementQueueIndex < movementQueue.Count; currentMovementQueueIndex++) {
+            int queueFloorIndex = (int)movementQueue[currentMovementQueueIndex];
+
+            if (requestedFloorIndex < queueFloorIndex) {
+                movementQueue.Insert(currentMovementQueueIndex, requestedFloor);
+                Debug.Log("Added new element :- " + requestedFloor);
+                return;
+            }
         }
+
+        movementQueue.Add(requestedFloor);
+
+        Debug.Log("Added new element at end :- " + requestedFloor);
     }
 
-    ////////////////////////////////////////////////////////////////////////////////////
-
-
-    private void InsertNewRequestIntoQueue(Floors givenTargetFloor) {
-        
-        movementQueue.Add(givenTargetFloor);
-
-
-
-            
-            startMotion = true;
-      
-        
-
-
+    private void SetCurrentFloorTarget(Floors floor) {
+        lastElevatorFloor = currentActiveFloor;
+        currentTargetFloorPosition = GetPositionByFloor(floor);
     }
 
-    ////////////////////////////////////////////////////////////////////////////////////
+    public void ResetElevator() {
+        
+        movementQueue.Clear();
+        currentTargetFloorPosition = GetPositionByFloor(Floors.GroundFloor);
 
-    private void ExecuteMovementQueue() {
-        if (movementQueue.Count == 0) {
-            Debug.Log(gameObject.name + " :- completed all requests");
+        transform.position = currentTargetFloorPosition;
+
+        currentActiveFloor = Floors.GroundFloor;
+        lastElevatorFloor = Floors.GroundFloor;
+
+        currentElevatorState = ElevatorState.Idle;
+    }
+
+    private void DefaultMode() {
+
+        currentTargetFloorPosition = GetPositionByFloor(Floors.GroundFloor);
+
+        transform.position = currentTargetFloorPosition;
+
+        currentActiveFloor = Floors.GroundFloor;
+        lastElevatorFloor = Floors.GroundFloor;
+
+        currentElevatorState = ElevatorState.Idle;
+    }
+
+    private void UpdateElevatorMovement() {
+        if (currentElevatorState == ElevatorState.Idle) {
+
+            if (movementQueue.Count != 0) {
+                //movementQueue.RemoveAt(0);
+            }
+
             return;
         }
-        SortAscending();
 
-        Floors nextFloor = movementQueue[0];
-
-        //RemoveRequest();
-
-        MovingToFloor(nextFloor);
-
-        Debug.Log(gameObject.name + " :- moving to " + nextFloor);
+        transform.position = MoveTowardsThisPosition(currentTargetFloorPosition);
     }
 
-    private void AddRequestToMovementQueue(int queueIndexPosition, Floors floorToInsert) {
+    private void SetElevatorStatus() {
 
-        movementQueue.Insert(queueIndexPosition, floorToInsert);
+        float distance = Vector3.Distance(transform.position, currentTargetFloorPosition);
 
-    }
+        if (distance <= 0.01f) {
+            transform.position = currentTargetFloorPosition;
 
-    private void RemoveRequest() {
-        
-        movementQueue.RemoveAt(0);
+            currentElevatorState = ElevatorState.Idle;
+            currentActiveFloor = GetFloorByPosition(currentTargetFloorPosition);
 
-    }
+            if (movementQueue.Count > 0 && !isWaitingAtFloor) {
+                movementQueue.RemoveAt(0);
+                StartCoroutine(WaitAndStartNextFloor(2f));
+            }
 
-    private void SortAscending() {
-        movementQueue.Sort((floorA, floorB) => floorA.CompareTo(floorB));
-    }
-
-    private void MovingToFloor(Floors targetFloor) {
-
-        newTargetFloor = targetFloor;
-
-        currentElevatorState = GetLiftDirection(lastTargetFloor, targetFloor);
-
-        if (currentElevatorState != ElevatorState.Idle) {
-            OnElevatorMoving();
+            return;
         }
 
-        currentTargetFloorPosition = GetFloorPosition(targetFloor);
+        if (transform.position.y < currentTargetFloorPosition.y) {
+            currentElevatorState = ElevatorState.MovingUp;
+        }
+        else {
+            currentElevatorState = ElevatorState.MovingDown;
+        }
     }
 
-    private void OnElevatorReachedFloor() {
-        transform.position = currentTargetFloorPosition;
-        SetCurrentElevatorFloor(newTargetFloor);
-        SetLastTargetFloor(newTargetFloor);
-
-        ChangeCurrentElevatorState(ElevatorState.Idle);
-
-        Debug.Log(gameObject.name + " reached floor: " + newTargetFloor);
-
-        ExecuteMovementQueue();
+    public List<Floors> GetMovementData() {
+        return movementQueue;
     }
 
     private Vector3 MoveTowardsThisPosition(Vector3 targetPosition) {
-
-        Vector3 changinigTargetPosition = Vector3.MoveTowards(transform.position, targetPosition, Time.deltaTime * elevatorMoveSpeed);
-
-        return changinigTargetPosition;
-    }
-    
-    private void SetInActiveRestFloor() {
-
-        currentTargetFloorPosition = GetFloorPosition(Floors.GroundFloor);
-        transform.position = currentTargetFloorPosition;
-
+        return Vector3.MoveTowards(
+            transform.position,
+            targetPosition,
+            Time.deltaTime * elevatorMoveSpeed
+        );
     }
 
-    private Vector3 GetFloorPosition(Floors floorType) {
-        return elevatorFloorRestPoints.GetFloorPosition(floorType);
+    private Floors GetFloorByPosition(Vector3 floorPosition) {
+        return elevatorFloorRestPoints.GetFloorByPosition(floorPosition);
     }
 
-    private void SetElevatorFloorPosition() {
-        transform.position = MoveTowardsThisPosition(currentTargetFloorPosition);
+    private Vector3 GetPositionByFloor(Floors floor) {
+        return elevatorFloorRestPoints.GetPositionByFloor(floor);
     }
 
     public ElevatorDataSO GetElevatorDataSO() {
         return elevatorDataSO;
     }
 
-    private void ChangeCurrentElevatorState(ElevatorState elevatorState) {
-        currentElevatorState = elevatorState;
+    public ElevatorState GetElevatorState() {
+        return currentElevatorState;
     }
 
-    private ElevatorState GetLiftDirection(Floors currentFloor, Floors targetFloor) {
-
-        if ((int)currentFloor < (int)targetFloor) {
-            //OnElevatorMoving();
-            return ElevatorState.MovingUp;
-        } 
-        
-        if ((int)currentFloor > (int)targetFloor) {
-            //OnElevatorMoving();
-            return ElevatorState.MovingDown;
-        }
-
-        return ElevatorState.Idle;
-
+    public Floors GetCurrentFloor() {
+        return currentActiveFloor;
     }
 
-    private void SetCurrentElevatorFloor(Floors setFloors) {
-        currentElevatorFloor = setFloors;
+    IEnumerator WaitAndStartNextFloor(float waitTime) {
+        isWaitingAtFloor = true;
+
+        yield return new WaitForSeconds(waitTime);
+
+        isWaitingAtFloor = false;
     }
 
-    private Floors GetCurrentElevatorFloor() {
-        return currentElevatorFloor;
-    }
+    public int GetCurrentTargetFloor() {
 
-    private void OnElevatorMoving() {
-        currentElevatorFloor = Floors.InBetween;
-    }
+        Floors floor = GetFloorByPosition(currentTargetFloorPosition);
 
-    private void SetLastTargetFloor(Floors floors) {
-        lastTargetFloor = floors;
-    }
-
-    private bool HasElevatorReachedTargetFloor(Floors targetFloor) {
-
-        Vector3 targetPosition = elevatorFloorRestPoints.GetFloorPosition(targetFloor);
-
-        float distance = Vector3.Distance(transform.position, targetPosition);
-
-        if (distance <= 0.01f) {
-            Debug.Log(gameObject.name + " reached " + targetFloor);
-            return true;
-        } else {
-            //Debug.Log(gameObject.name + " :- has NOT reached " + targetFloor);
-            return false;
-        }
-    }
-
-    public List<Floors> GetMovementQueue() {
-        return movementQueue;
-    }
-
-    public bool IsElevatorIdle() {
-        return currentElevatorState == ElevatorState.Idle;
-    }
-
-    private int GetElevatorIndex(Floors floor) {
-            
         return (int)floor;
+    }
 
+    public void SetElevatorMoveSpeed(int moveSpeed) {
+        elevatorMoveSpeed = moveSpeed;
     }
 
 } 

@@ -11,7 +11,7 @@ public class ElevatorFloorRestPoints : MonoBehaviour {
         }
     }
 
-    public Vector3 GetFloorPosition(Floors requiredFloor) {
+    public Vector3 GetPositionByFloor(Floors requiredFloor) {
 
         foreach (FloorData floorData in floorRestPoints) {
             

@@ -1,8 +1,6 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using TMPro;
-using UnityEditor.Search;
 using UnityEngine;
 
 public class ElevatorDialogBoxUI : MonoBehaviour {
@@ -11,11 +9,15 @@ public class ElevatorDialogBoxUI : MonoBehaviour {
 
     [SerializeField] private TextMeshProUGUI elevatorMovementQueue;
 
+    [SerializeField] private TextMeshProUGUI currentTargetFloorText;
+
     private void Update() {
 
-        List<Floors> queue = elevator.GetMovementQueue();
+        List<Floors> queue = elevator.GetMovementData();
 
         SetDialogBoxRequestQueue(queue);
+
+        SetCurrentTargetFloorText();
     }
 
     private void SetDialogBoxRequestQueue(List<Floors> floors) {
@@ -33,6 +35,13 @@ public class ElevatorDialogBoxUI : MonoBehaviour {
 
         elevatorMovementQueue.text = "[" + display + "]";
 
+    }
+
+    private void SetCurrentTargetFloorText() {
+
+        elevator.GetCurrentTargetFloor();
+
+        currentTargetFloorText.text = elevator.GetCurrentTargetFloor().ToString();
     }
 
 }

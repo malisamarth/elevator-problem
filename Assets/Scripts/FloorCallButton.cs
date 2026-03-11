@@ -21,10 +21,10 @@ public class FloorCallButton : MonoBehaviour {
 
     public void RequestCallElevator() {
 
-        OnRequestCallElevator?.Invoke(this, new OnRequestCallElevatorEventArgs(GetFloorNumber()));
+        OnRequestCallElevator?.Invoke(this, new OnRequestCallElevatorEventArgs(GetFloorType()));
     }
 
-    private Floors GetFloorNumber() {
+    private Floors GetFloorType() {
         return floorType;
     }
 

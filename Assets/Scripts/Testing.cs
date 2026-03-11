@@ -3,6 +3,8 @@ using static FloorCallButton;
 
 public class Testing : MonoBehaviour {
 
+    //Only for testing purpose.
+
     private ElevatorSystemManager elevatorSystemManager;
 
     [SerializeField] private Floors[] testArray;
